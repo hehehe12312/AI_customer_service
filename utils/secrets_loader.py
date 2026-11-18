@@ -2,7 +2,7 @@ import os
 
 
 def apply_streamlit_secrets() -> None:
-    """把 Streamlit Secrets 写入环境变量，供 dotenv/os.getenv 使用。"""
+    """把 Streamlit Secrets 写入环境变量，供 os.getenv 使用。"""
     try:
         import streamlit as st
 
@@ -10,24 +10,35 @@ def apply_streamlit_secrets() -> None:
     except Exception:
         return
 
-    def _walk(obj, prefix: str = "") -> None:
+    def _set(key: str, value: object) -> None:
+        if value is None:
+            return
+        text = str(value).strip()
+        if text:
+            os.environ[key] = text
+
+    def _walk(obj) -> None:
         try:
-            items = obj.items()
+            keys = list(obj.keys())
         except Exception:
             return
-        for key, value in items:
-            full_key = f"{prefix}{key}" if not prefix else f"{prefix}_{key}"
-            if isinstance(value, str):
-                if value:
-                    os.environ[str(key)] = value
-            elif hasattr(value, "items"):
-                _walk(value, str(key))
+        for key in keys:
+            try:
+                value = obj[key]
+            except Exception:
+                continue
+            key_str = str(key)
+            # 嵌套表（TOML section）继续展开
+            if hasattr(value, "keys") and not isinstance(value, (str, bytes)):
+                _walk(value)
+            else:
+                _set(key_str, value)
 
-    _walk(secrets)
+    try:
+        _walk(secrets)
+    except Exception:
+        return
 
-    # langchain-openai 在部分版本仍会回退读 OPENAI_API_KEY
+    # 兼容部分 langchain-openai 回退读取 OPENAI_API_KEY
     if os.getenv("DEEPSEEK_API_KEY") and not os.getenv("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = os.environ["DEEPSEEK_API_KEY"]
-    if os.getenv("SILICONFLOW_API_KEY") and not os.getenv("OPENAI_API_KEY"):
-        # 仅当完全没有 chat key 时不覆盖；上面已处理 DeepSeek
-        pass
