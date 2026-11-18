@@ -22,8 +22,14 @@ class ConfigHandler(object):
         with open(config_path, "r", encoding=encoding) as f:
             return yaml.load(f.read(), Loader=yaml.FullLoader)
 
+    @staticmethod
+    def load_memory_config(config_path: str = get_abs_path("config/memory.yml"), encoding="utf-8"):
+        with open(config_path, "r", encoding=encoding) as f:
+            return yaml.load(f.read(), Loader=yaml.FullLoader)
+
 
 rag_conf = ConfigHandler.load_rag_config()
 chroma_conf = ConfigHandler.load_chroma_config()
 prompts_conf = ConfigHandler.load_prompts_config()
 agent_conf = ConfigHandler.load_agent_config()
+memory_conf = ConfigHandler.load_memory_config()

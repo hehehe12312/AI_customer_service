@@ -1,0 +1,6 @@
+conversation_dir: data/memory/conversations
+profile_dir: data/memory/profiles
+max_history_messages: 20
+persist_directory: chroma_memory
+collection_name: user_memory
+recall_k: 3

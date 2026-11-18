@@ -3,6 +3,8 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 
 from rag.vector_store import VectorStoreService
 from rag.rag_service import RagSummarizeService
+from memory.profile_store import ProfileStore
+from memory.vector_memory import VectorMemory
 import random, os
 import requests
 from dotenv import load_dotenv
@@ -14,6 +16,8 @@ load_dotenv()
 
 vector_store = VectorStoreService()
 rag = RagSummarizeService(vector_store)
+profile_store = ProfileStore()
+vector_memory = VectorMemory()
 
 user_ids = ["1001", "1002", "1003", "1004", "1005", "1006", "1007", "1008", "1009", "1010",]
 month_arr = ["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06",
@@ -196,6 +200,39 @@ def fetch_external_data(user_id: str, month: str) -> str:
 @tool(description="无入参，无返回值，调用后触发中间件自动为报告生成场景动态注入上下文信息，为后续提示词切换提供上下文支撑")
 def fill_context_for_report():
     return "fill_context_for_report已调用"
+
+
+@tool(description="将用户长期信息写入画像或向量记忆。key 常用 city/robot_model/preferences/note；key=note 时同时写入向量记忆")
+def save_user_memory(user_id: str, key: str, value: str) -> str:
+    user_id = (user_id or "").strip()
+    key = (key or "").strip()
+    value = (value or "").strip()
+    if not user_id or not key or not value:
+        return "保存失败：user_id、key、value 均不能为空"
+    if key == "note":
+        profile_store.update(user_id, {"notes": value})
+        vector_memory.add(user_id, value)
+        return f"已为用户{user_id}保存备注记忆: {value}"
+    profile_store.update(user_id, {key: value})
+    # 结构化字段也写入一条自然语言，便于语义召回
+    vector_memory.add(user_id, f"{key}: {value}")
+    return f"已为用户{user_id}保存画像字段 {key}={value}"
+
+
+@tool(description="召回指定用户的长期画像与相关事实记忆，入参为 user_id 与检索词 query")
+def recall_user_memory(user_id: str, query: str) -> str:
+    user_id = (user_id or "").strip()
+    query = (query or "").strip() or "用户偏好与基本信息"
+    if not user_id:
+        return "召回失败：user_id 不能为空"
+    profile_text = profile_store.summary(user_id)
+    facts = vector_memory.search(user_id, query)
+    if facts:
+        fact_text = "\n".join(f"- {item}" for item in facts)
+    else:
+        fact_text = "- 暂无相关向量记忆"
+    return f"【用户画像】\n{profile_text}\n\n【相关记忆】\n{fact_text}"
+
 
 if __name__ == "__main__":
     # 单独跑本文件时，默认测一下和风天气

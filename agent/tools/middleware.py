@@ -5,8 +5,11 @@ from langchain.tools.tool_node import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.runtime import Runtime
 from langgraph.types import Command
+from memory.profile_store import ProfileStore
 from utils.logger_handler import logger
 from utils.prompt_loader import load_system_prompt, load_report_prompt
+
+_profile_store = ProfileStore()
 
 
 @wrap_tool_call
@@ -30,15 +33,18 @@ def monitor_tool(
 
 
 @before_model
-def log_before_model(state:AgentState, runtime: Runtime) -> dict[str, Any] | None:
+def log_before_model(state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
     logger.info(f"[log_before_model]: 即将调用模型，带有{len(state['messages'])}条消息，消息如下：")
-    # for message in state['messages']:
-    #     logger.info(f"[log_before_model][{type(message).__name__}]: {message.content.strip()}")
     logger.info(f"[log_before_model]: ----------省略已输出内容----------")
-    logger.info(f"[log_before_model][{type(state['messages'][-1]).__name__}]: {state['messages'][-1].content.strip()}")
-
-
+    last = state['messages'][-1]
+    content = getattr(last, "content", "")
+    if isinstance(content, str):
+        preview = content.strip()
+    else:
+        preview = str(content)
+    logger.info(f"[log_before_model][{type(last).__name__}]: {preview}")
     return None
+
 
 @dynamic_prompt
 def report_prompt_switch(request: ModelRequest) -> str:
@@ -46,6 +52,15 @@ def report_prompt_switch(request: ModelRequest) -> str:
     if is_report:
         return load_report_prompt()
 
-    return load_system_prompt()
+    base = load_system_prompt()
+    user_id = request.runtime.context.get("user_id")
+    if not user_id:
+        return base
 
-
+    profile_summary = _profile_store.summary(str(user_id))
+    return (
+        f"{base}\n\n"
+        f"### 当前用户长期画像（自动注入，可直接参考；缺失信息再调用 recall_user_memory）\n"
+        f"当前会话 user_id={user_id}\n"
+        f"{profile_summary}\n"
+    )
