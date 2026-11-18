@@ -39,7 +39,7 @@ from memory.conversation_store import ConversationStore
 
 DEFAULT_GREETING = {
     "role": "assistant",
-    "content": "你好，欢迎光临本店，我是户外运动店铺客服。告诉我城市和身高体重，我可以根据天气为您推荐一款冲锋衣或防晒衣并给尺码建议；也可以咨询商品参数、洗护保养或售后退换规则。",
+    "content": "你好，欢迎光临本店，我是户外运动店铺客服。发我城市和身高体重，我可以按天气推荐一款服饰并给尺码建议；也可以直接问选购场景、穿着搭配、发货时效、商品参数、洗护保养或售后退换。",
 }
 PROFILE_USER_ID = "default"
 
