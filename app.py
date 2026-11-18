@@ -52,7 +52,7 @@ PROFILE_USER_ID = "default"
 conversation_store = ConversationStore()
 
 # 主题/知识库变更后 bump 此版本，避免 session 里缓存旧 Agent（含失效的 Chroma collection）
-AGENT_BUILD = "outdoor-cs-v3"
+AGENT_BUILD = "outdoor-cs-v5"
 if st.session_state.get("agent_build") != AGENT_BUILD or "agent" not in st.session_state:
     st.session_state["agent"] = ReactAgent()
     st.session_state["agent_build"] = AGENT_BUILD

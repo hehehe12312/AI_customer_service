@@ -1,4 +1,5 @@
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -11,6 +12,7 @@ from langchain_openai import ChatOpenAI
 # from langchain_openai import OpenAIEmbeddings
 
 from utils.config_handler import rag_conf
+from utils.logger_handler import logger
 from utils.secrets_loader import apply_streamlit_secrets
 
 _chat_model = None
@@ -29,6 +31,24 @@ class VoyageEmbeddings(Embeddings):
         self.model = model
         self.client = voyageai.Client(api_key=api_key)
 
+    def _embed_with_retry(self, texts: list[str], input_type: str):
+        """免费档约 3 RPM，遇限流自动等待重试。"""
+        last_err = None
+        for attempt in range(6):
+            try:
+                return self.client.embed(texts, model=self.model, input_type=input_type)
+            except Exception as e:
+                last_err = e
+                name = type(e).__name__
+                msg = str(e).lower()
+                if "ratelimit" in name.lower() or "rate limit" in msg or "rpm" in msg:
+                    wait = 22 + attempt * 5
+                    logger.warning(f"[Voyage]限流，{wait}s 后重试 ({attempt + 1}/6): {e}")
+                    time.sleep(wait)
+                    continue
+                raise
+        raise last_err
+
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
@@ -37,12 +57,15 @@ class VoyageEmbeddings(Embeddings):
         batch_size = 64
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
-            result = self.client.embed(batch, model=self.model, input_type="document")
+            result = self._embed_with_retry(batch, input_type="document")
             vectors.extend(result.embeddings)
+            # 批次之间稍作间隔，降低免费档触发限流概率
+            if i + batch_size < len(texts):
+                time.sleep(21)
         return vectors
 
     def embed_query(self, text: str) -> list[float]:
-        result = self.client.embed([text], model=self.model, input_type="query")
+        result = self._embed_with_retry([text], input_type="query")
         return result.embeddings[0]
 
 
