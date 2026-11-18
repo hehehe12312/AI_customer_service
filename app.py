@@ -1,14 +1,20 @@
-import base64
 import time
-from pathlib import Path
+from urllib.parse import quote
 
 import streamlit as st
 from dotenv import load_dotenv
 
 from utils.secrets_loader import apply_streamlit_secrets, missing_required_secrets
 
-_DELETE_ICON_PATH = Path(__file__).resolve().parent / "assets" / "delete_trash.png"
-_DELETE_ICON_B64 = base64.b64encode(_DELETE_ICON_PATH.read_bytes()).decode("ascii")
+# 红色线性垃圾桶图标（贴近参考图：圆角描边、无填充）
+_DELETE_ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <path d="M9 3.75h6" stroke="#EF4444" stroke-width="1.75" stroke-linecap="round"/>
+  <path d="M4.5 6.5h15" stroke="#EF4444" stroke-width="1.75" stroke-linecap="round"/>
+  <path d="M6.4 6.5V18a2.2 2.2 0 0 0 2.2 2.2h6.8A2.2 2.2 0 0 0 17.6 18V6.5"
+        stroke="#EF4444" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10 10.2v6.2M14 10.2v6.2" stroke="#EF4444" stroke-width="1.75" stroke-linecap="round"/>
+</svg>"""
+_DELETE_ICON_URI = "data:image/svg+xml;charset=utf-8," + quote(_DELETE_ICON_SVG)
 
 load_dotenv()
 loaded_keys = apply_streamlit_secrets()
@@ -86,30 +92,58 @@ if "session_id" not in st.session_state or "message" not in st.session_state:
 st.markdown(
     f"""
     <style>
-    /* 侧栏会话行右侧：垃圾桶图标按钮（无文字） */
+    /* 侧栏会话行：标题与删除按钮垂直居中对齐 */
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] {{
+        align-items: center !important;
+        gap: 0.15rem !important;
+    }}
+    /* 删除按钮：透明底 + 红色垃圾桶图标 */
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
+    div[data-testid="column"]:last-child div[data-testid="stButton"] {{
+        display: flex !important;
+        justify-content: center !important;
+    }}
     section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
     div[data-testid="column"]:last-child button {{
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
-        padding: 0.2rem !important;
+        padding: 0 !important;
+        width: 2rem !important;
+        height: 2rem !important;
         min-height: 2rem !important;
+        border-radius: 0.45rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: background-color 0.15s ease, transform 0.15s ease !important;
+    }}
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
+    div[data-testid="column"]:last-child button:hover {{
+        background: rgba(239, 68, 68, 0.12) !important;
+        transform: scale(1.06);
+    }}
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
+    div[data-testid="column"]:last-child button:focus {{
+        box-shadow: none !important;
+        outline: none !important;
     }}
     section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
     div[data-testid="column"]:last-child button p,
     section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
     div[data-testid="column"]:last-child button span {{
         font-size: 0 !important;
+        line-height: 0 !important;
         color: transparent !important;
+        margin: 0 !important;
     }}
     section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
     div[data-testid="column"]:last-child button::before {{
         content: "";
         display: block;
-        width: 20px;
-        height: 20px;
-        margin: 0 auto;
-        background: url("data:image/png;base64,{_DELETE_ICON_B64}") center / contain no-repeat;
+        width: 1.15rem;
+        height: 1.15rem;
+        background: url("{_DELETE_ICON_URI}") center / contain no-repeat;
     }}
     </style>
     """,
@@ -131,14 +165,20 @@ with st.sidebar:
             title = item["title"]
             is_current = sid == st.session_state.get("session_id")
             label = f"› {title}" if is_current else title
-            col_open, col_del = st.columns([5, 1])
+            col_open, col_del = st.columns([6, 1], vertical_alignment="center")
             with col_open:
                 if st.button(label, key=f"session_{sid}", use_container_width=True):
                     if not is_current:
                         open_session(sid)
                         st.rerun()
             with col_del:
-                if st.button("-", key=f"del_{sid}", use_container_width=True, help="删除该会话"):
+                if st.button(
+                    "删除",
+                    key=f"del_{sid}",
+                    use_container_width=True,
+                    help="删除该会话",
+                    type="tertiary",
+                ):
                     delete_session_and_switch(sid)
                     st.rerun()
 
