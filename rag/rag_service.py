@@ -11,8 +11,8 @@ from utils.path_tools import get_abs_path
 
 
 class RagSummarizeService:
-    # 类变量缓存，所有实例共用
-    _PROMPT_TEXT: str = None
+    # 旧版类变量缓存（已停用，避免角色/提示词更新后进程内仍用旧文案）
+    # _PROMPT_TEXT: str = None
 
     def __init__(self, vector_store: VectorStoreService):
         self.vector_store = vector_store
@@ -23,9 +23,8 @@ class RagSummarizeService:
         self.chain = self._init_chain()
 
     def _load_prompt_text(self) -> str:
-        if self._PROMPT_TEXT is not None:
-            # 避免重复创建对象的重复读文件加载，从缓存读取
-            return self._PROMPT_TEXT
+        # if self._PROMPT_TEXT is not None:
+        #     return self._PROMPT_TEXT
 
         path = get_abs_path(prompts_conf["rag_summarize_prompt_path"])
         try:
@@ -45,8 +44,7 @@ class RagSummarizeService:
             logger.error(f"提示词文件内容为空：{path}")
             raise ValueError(f"提示词文件内容为空：{path}")
 
-        # 记录缓存
-        self._PROMPT_TEXT = prompt_text
+        # self._PROMPT_TEXT = prompt_text
         return prompt_text
 
     def _init_chain(self):
@@ -67,6 +65,8 @@ class RagSummarizeService:
         for doc in context_docs:
             counter += 1
             context += f"【参考资料{counter}】：参考资料：{doc.page_content} | 参考元数据：{doc.metadata}\n"
+            # 旧逻辑：收集 source 并在摘要后追加「知识库来源：…」，已按需求关闭
+            # src = (doc.metadata or {}).get("source") or ""
         input_dict["input"] = query
         input_dict["context"] = context
 

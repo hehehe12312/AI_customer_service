@@ -1,13 +1,14 @@
 from langchain.agents import create_agent
-from agent.tools.middleware import monitor_tool, log_before_model, report_prompt_switch
+# from agent.tools.middleware import monitor_tool, log_before_model, report_prompt_switch
+from agent.tools.middleware import monitor_tool, log_before_model
 from agent.tools.agent_tools import (
     rag_summarize,
     get_weather,
-    get_user_location,
-    get_user_id,
-    get_current_month,
-    fetch_external_data,
-    fill_context_for_report,
+    # get_user_location,
+    # get_user_id,
+    # get_current_month,
+    # fetch_external_data,
+    # fill_context_for_report,
     save_user_memory,
     recall_user_memory,
 )
@@ -24,15 +25,16 @@ class ReactAgent(object):
             tools=[
                 rag_summarize,
                 get_weather,
-                get_user_location,
-                get_user_id,
-                get_current_month,
-                fetch_external_data,
-                fill_context_for_report,
+                # get_user_location,
+                # get_user_id,
+                # get_current_month,
+                # fetch_external_data,
+                # fill_context_for_report,
                 save_user_memory,
                 recall_user_memory,
             ],
-            middleware=[monitor_tool, log_before_model, report_prompt_switch],
+            # middleware=[monitor_tool, log_before_model, report_prompt_switch],
+            middleware=[monitor_tool, log_before_model],
         )
         self.max_history = int(memory_conf.get("max_history_messages", 20))
 
@@ -83,7 +85,7 @@ class ReactAgent(object):
 if __name__ == "__main__":
     agent = ReactAgent()
     demo_messages = [
-        {"role": "user", "content": "我是用户1001，我在杭州，用的是扫拖一体X1，请记住。"},
+        {"role": "user", "content": "上海，身高170体重65，推荐一件。"},
     ]
-    for chunk in agent.execute_stream(demo_messages, user_id="1001"):
+    for chunk in agent.execute_stream(demo_messages, user_id="default"):
         print(chunk, end="", flush=True)

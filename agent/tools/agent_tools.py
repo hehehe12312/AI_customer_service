@@ -15,6 +15,8 @@ from utils.logger_handler import logger
 load_dotenv()
 
 vector_store = VectorStoreService()
+vector_store.load_document()
+# 重建 rag 以加载最新 summarize 提示词（如：不附带来源）
 rag = RagSummarizeService(vector_store)
 profile_store = ProfileStore()
 vector_memory = VectorMemory()
@@ -37,6 +39,11 @@ _WEATHER_URL = (
     f"https://{_QWEATHER_HOST}/v7/weather/now"
     if _QWEATHER_HOST
     else os.getenv("QWEATHER_WEATHER_URL", "https://devapi.qweather.com/v7/weather/now")
+)
+_INDICES_URL = (
+    f"https://{_QWEATHER_HOST}/v7/indices/1d"
+    if _QWEATHER_HOST
+    else os.getenv("QWEATHER_INDICES_URL", "https://devapi.qweather.com/v7/indices/1d")
 )
 
 
@@ -82,12 +89,43 @@ def _fetch_weather_now(location_id: str) -> dict | None:
     return data["now"]
 
 
-@tool(description="从向量存储中检索参考资料")
+def _fetch_uv_index(location_id: str) -> str:
+    """查询和风紫外线生活指数（type=5），失败时返回「暂无」。"""
+    try:
+        resp = requests.get(
+            _INDICES_URL,
+            params={"location": location_id, "type": "5"},
+            headers=_qweather_headers(),
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if str(data.get("code")) != "200" or not data.get("daily"):
+            return "暂无"
+        item = data["daily"][0]
+        category = item.get("category") or ""
+        level = item.get("level") or ""
+        text = item.get("text") or ""
+        if category and level:
+            detail = f"{category}（等级{level}）"
+        elif category:
+            detail = category
+        else:
+            detail = "暂无"
+        if text:
+            return f"{detail}，说明：{text}"
+        return detail
+    except Exception as e:
+        logger.warning(f"[get_weather]紫外线指数获取失败: {e}")
+        return "暂无"
+
+
+@tool(description="从向量存储中检索冲锋衣/防晒衣参数、尺码表、洗护保养与售后规则等参考资料")
 def rag_summarize(query: str) -> str:
     return rag.rag_summarize(query)
 
 
-@tool(description="从和风天气获取指定城市的实时天气，以消息字符形式返回")
+@tool(description="从和风天气获取指定城市的气温、降雨/降水与紫外线信息，以消息字符形式返回")
 def get_weather(city: str) -> str:
     if not _QWEATHER_KEY:
         return f"未能获取城市{city}的天气：未配置和风天气 API Key"
@@ -100,15 +138,22 @@ def get_weather(city: str) -> str:
             return f"已定位到{display_name}，但未能获取实时天气，请稍后重试"
         text = now.get("text", "未知")
         temp = now.get("temp", "--")
-        humidity = now.get("humidity", "--")
-        wind_dir = now.get("windDir", "")
-        wind_scale = now.get("windScale", "--")
-        feels_like = now.get("feelsLike", "--")
-        vis = now.get("vis", "--")
         precip = now.get("precip", "0")
+        # 旧版长文案字段（湿度/能见度等）保留注释，便于回滚
+        # humidity = now.get("humidity", "--")
+        # wind_dir = now.get("windDir", "")
+        # wind_scale = now.get("windScale", "--")
+        # feels_like = now.get("feelsLike", "--")
+        # vis = now.get("vis", "--")
+        uv = _fetch_uv_index(location_id)
+        # 旧返回：
+        # return (
+        #     f"城市{display_name}天气为{text}，气温{temp}摄氏度，体感温度{feels_like}摄氏度，"
+        #     f"空气湿度{humidity}%，{wind_dir}{wind_scale}级，能见度{vis}公里，降水量{precip}毫米"
+        # )
         return (
-            f"城市{display_name}天气为{text}，气温{temp}摄氏度，体感温度{feels_like}摄氏度，"
-            f"空气湿度{humidity}%，{wind_dir}{wind_scale}级，能见度{vis}公里，降水量{precip}毫米"
+            f"城市{display_name}天气为{text}，气温{temp}摄氏度，"
+            f"降水量{precip}毫米，紫外线{uv}"
         )
     except requests.HTTPError as e:
         body = ""
@@ -128,7 +173,7 @@ def get_weather(city: str) -> str:
                     f"获取城市{city}天气失败：和风凭据触发了安全限制（Security Restriction）。"
                     f"请到控制台 → 项目 → 该 API KEY，检查「应用限制/API 限制」："
                     f"开发阶段建议先清空 IP/网站白名单，或把本机公网 IP 加入白名单；"
-                    f"API 限制需包含城市查询与实时天气"
+                    f"API 限制需包含城市查询、实时天气与生活指数"
                 )
         return f"获取城市{city}天气失败，请稍后重试"
     except requests.RequestException as e:
@@ -139,6 +184,7 @@ def get_weather(city: str) -> str:
         return f"获取城市{city}天气失败，请稍后重试"
 
 
+# ---- 以下为扫地机旧工具，保留但不注册到户外店铺客服 Agent ----
 @tool(description="获取用户所在城市名称，以纯字符形式返回")
 def get_user_location() -> str:
     return random.choice(["深圳", "合肥", "杭州"])
