@@ -55,3 +55,14 @@ class ConversationStore:
         if limit <= 0 or len(messages) <= limit:
             return messages
         return messages[-limit:]
+
+    def list_user_ids(self) -> list[str]:
+        if not os.path.isdir(self.base_dir):
+            return []
+        ids = []
+        for name in os.listdir(self.base_dir):
+            if name.endswith(".json"):
+                user_id = name[:-5]
+                if user_id and self.load(user_id):
+                    ids.append(user_id)
+        return sorted(ids)

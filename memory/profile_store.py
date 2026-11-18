@@ -28,6 +28,17 @@ class ProfileStore:
         except (json.JSONDecodeError, OSError):
             return {}
 
+    def list_user_ids(self) -> list[str]:
+        if not os.path.isdir(self.base_dir):
+            return []
+        ids = []
+        for name in os.listdir(self.base_dir):
+            if name.endswith(".json"):
+                user_id = name[:-5]
+                if user_id and self.get(user_id):
+                    ids.append(user_id)
+        return sorted(ids)
+
     def update(self, user_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         profile = self.get(user_id)
         for key, value in fields.items():

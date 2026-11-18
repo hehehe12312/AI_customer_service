@@ -1,21 +1,31 @@
 import os
 
 
-def apply_streamlit_secrets() -> None:
-    """把 Streamlit Secrets 写入环境变量，供 os.getenv 使用。"""
+REQUIRED_SECRET_KEYS = (
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_BASE_URL",
+    "VOYAGE_API_KEY",
+)
+
+
+def apply_streamlit_secrets() -> list[str]:
+    """把 Streamlit Secrets 写入环境变量，返回已读到的 key 名列表。"""
+    loaded: list[str] = []
     try:
         import streamlit as st
 
         secrets = st.secrets
     except Exception:
-        return
+        return loaded
 
     def _set(key: str, value: object) -> None:
         if value is None:
             return
         text = str(value).strip()
-        if text:
-            os.environ[key] = text
+        if not text:
+            return
+        os.environ[key] = text
+        loaded.append(key)
 
     def _walk(obj) -> None:
         try:
@@ -28,7 +38,6 @@ def apply_streamlit_secrets() -> None:
             except Exception:
                 continue
             key_str = str(key)
-            # 嵌套表（TOML section）继续展开
             if hasattr(value, "keys") and not isinstance(value, (str, bytes)):
                 _walk(value)
             else:
@@ -37,8 +46,14 @@ def apply_streamlit_secrets() -> None:
     try:
         _walk(secrets)
     except Exception:
-        return
+        return loaded
 
-    # 兼容部分 langchain-openai 回退读取 OPENAI_API_KEY
     if os.getenv("DEEPSEEK_API_KEY") and not os.getenv("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = os.environ["DEEPSEEK_API_KEY"]
+
+    return loaded
+
+
+def missing_required_secrets() -> list[str]:
+    apply_streamlit_secrets()
+    return [key for key in REQUIRED_SECRET_KEYS if not os.getenv(key)]
