@@ -1,6 +1,16 @@
+import os
 import time
 
 import streamlit as st
+
+# Streamlit Cloud：把 Secrets 注入环境变量，供 factory / 和风天气读取
+try:
+    for key, value in st.secrets.items():
+        if isinstance(value, str) and value and key not in os.environ:
+            os.environ[key] = value
+except Exception:
+    pass
+
 from agent.react_agent import ReactAgent
 from memory.conversation_store import ConversationStore
 
