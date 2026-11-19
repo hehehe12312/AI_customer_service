@@ -20,7 +20,7 @@ load_dotenv()
 loaded_keys = apply_streamlit_secrets()
 missing = missing_required_secrets()
 
-st.title("户外运动店铺客服")
+st.title("户外运动店铺智能客服")
 st.divider()
 
 if missing:
