@@ -1,3 +1,4 @@
+import time
 from urllib.parse import quote
 
 import streamlit as st
@@ -39,6 +40,7 @@ QWEATHER_API_HOST = "你的host.re.qweatherapi.com"''',
     st.write("已读到的 Secrets key：", ", ".join(loaded_keys) if loaded_keys else "（无）")
     st.stop()
 
+from agent.react_agent import ReactAgent
 from memory.conversation_store import ConversationStore
 
 DEFAULT_GREETING = {
@@ -49,21 +51,11 @@ PROFILE_USER_ID = "default"
 
 conversation_store = ConversationStore()
 
-# 主题变更后 bump；Agent 用 cache_resource 跨会话复用，避免每次打开网页都重建
-AGENT_BUILD = "outdoor-cs-v7"
-
-
-@st.cache_resource(show_spinner="正在加载客服引擎…")
-def _get_cached_agent(build: str):
-    from agent.react_agent import ReactAgent
-
-    return ReactAgent()
-
-
-# 首屏先完成轻量会话初始化，再取（或复用）Agent
-agent = _get_cached_agent(AGENT_BUILD)
-st.session_state["agent"] = agent
-st.session_state["agent_build"] = AGENT_BUILD
+# 主题/知识库变更后 bump 此版本，避免 session 里缓存旧 Agent（含失效的 Chroma collection）
+AGENT_BUILD = "outdoor-cs-v5"
+if st.session_state.get("agent_build") != AGENT_BUILD or "agent" not in st.session_state:
+    st.session_state["agent"] = ReactAgent()
+    st.session_state["agent_build"] = AGENT_BUILD
 
 
 def start_new_session() -> None:
@@ -199,28 +191,27 @@ if prompt:
     st.chat_message("user").write(prompt)
     st.session_state["message"].append({"role": "user", "content": prompt})
 
-    # 用模型真实 token 流做打字机效果（无 sleep）；工具执行时会自然停顿
-    token_parts: list[str] = []
-
-    def capture(generator):
-        for piece in generator:
-            token_parts.append(piece)
-            yield piece
-
-    with st.chat_message("assistant"):
-        st.write_stream(
-            capture(
-                st.session_state["agent"].execute_stream(
-                    st.session_state["message"],
-                    user_id=PROFILE_USER_ID,
-                )
-            )
+    response_messages = []
+    with st.spinner("客服思考中..."):
+        res_stream = st.session_state["agent"].execute_stream(
+            st.session_state["message"],
+            user_id=PROFILE_USER_ID,
         )
 
-    assistant_text = "".join(token_parts).strip()
-    st.session_state["message"].append({"role": "assistant", "content": assistant_text})
-    conversation_store.save_session(
-        st.session_state["session_id"],
-        st.session_state["message"],
-    )
-    st.rerun()
+        def capture(generator, cache_list):
+            for chunk in generator:
+                cache_list.append(chunk)
+                for char in chunk:
+                    time.sleep(0.001)
+                    yield char
+
+        st.chat_message("assistant").write_stream(capture(res_stream, response_messages))
+        assistant_text = response_messages[-1] if response_messages else ""
+        st.session_state["message"].append({"role": "assistant", "content": assistant_text})
+        conversation_store.save_session(
+            st.session_state["session_id"],
+            st.session_state["message"],
+        )
+        st.rerun()
+
+

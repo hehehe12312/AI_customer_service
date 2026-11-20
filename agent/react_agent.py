@@ -1,5 +1,4 @@
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessageChunk
 # from agent.tools.middleware import monitor_tool, log_before_model, report_prompt_switch
 from agent.tools.middleware import monitor_tool, log_before_model
 from agent.tools.agent_tools import (
@@ -58,25 +57,8 @@ class ReactAgent(object):
             return "".join(parts).strip()
         return str(content).strip()
 
-    @staticmethod
-    def _chunk_text_delta(content) -> str:
-        """从流式 AIMessageChunk 取出增量文本（不做 strip，避免吃掉空格/换行）。"""
-        if content is None:
-            return ""
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts = []
-            for item in content:
-                if isinstance(item, str):
-                    parts.append(item)
-                elif isinstance(item, dict) and item.get("type") == "text":
-                    parts.append(str(item.get("text") or ""))
-            return "".join(parts)
-        return ""
-
     def execute_stream(self, messages, user_id: str = "1001"):
-        """按模型 token 增量 yield 文本，供前端打字机展示（无需 sleep）。"""
+        """messages: [{"role": "user"|"assistant", "content": "..."}, ...]"""
         # 只把 user/assistant 文本消息交给模型，并截断过长历史
         cleaned = []
         for item in messages:
@@ -89,18 +71,15 @@ class ReactAgent(object):
 
         input_dict = {"messages": cleaned}
 
-        # messages 模式：边生成边推送；工具调用阶段会自然停顿，无需人为 sleep
-        for msg, _metadata in self.agent.stream(
+        for chunk in self.agent.stream(
             input_dict,
-            stream_mode="messages",
+            stream_mode="values",
             context={"report": False, "user_id": str(user_id)},
         ):
-            if not isinstance(msg, AIMessageChunk):
-                continue
-            # 纯 tool_call 分片没有对用户可见的正文，跳过
-            delta = self._chunk_text_delta(msg.content)
-            if delta:
-                yield delta
+            latest_message = chunk["messages"][-1]
+            text = self._content_to_text(latest_message.content)
+            if text:
+                yield text + "\n"
 
 
 if __name__ == "__main__":
