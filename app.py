@@ -57,7 +57,6 @@ AGENT_BUILD = "outdoor-cs-v7"
 @st.cache_resource(show_spinner=False)
 def _get_cached_agent(build: str):
     from agent.react_agent import ReactAgent
-
     return ReactAgent()
 
 
@@ -192,6 +191,7 @@ with st.sidebar:
                     delete_session_and_switch(sid)
                     st.rerun()
 
+# 渲染历史消息
 for message in st.session_state["message"]:
     st.chat_message(message["role"]).write(message["content"])
 
@@ -201,24 +201,24 @@ if prompt:
     st.chat_message("user").write(prompt)
     st.session_state["message"].append({"role": "user", "content": prompt})
 
-    response_messages = []
+    # 生成AI气泡 + 空容器用来实时刷新
+    ai_msg = st.chat_message("assistant")
+    content_box = ai_msg.empty()
+    full_answer = ""
+
     with st.spinner("客服思考中..."):
-        res_stream = get_agent().execute_stream(
+        stream_iter = get_agent().execute_stream(
             st.session_state["message"],
             user_id=PROFILE_USER_ID,
         )
 
-    def capture(generator, cache_list):
-        for chunk in generator:
-            cache_list.append(chunk)
-            yield chunk
+    # 手动循环每一块chunk，【全部收完才往下走】，不会中途被rerun打断
+    for chunk in stream_iter:
+        full_answer += chunk
+        content_box.markdown(full_answer)
 
-    st.chat_message("assistant").write_stream(capture(res_stream, response_messages))
-
-    # 修复：拼接全部 chunk 作为完整回答，而不是只取最后一段
-    assistant_text = "".join(response_messages)
-    st.session_state["message"].append({"role": "assistant", "content": assistant_text})
-
+    # 流100%消费完毕之后，再保存、再rerun
+    st.session_state["message"].append({"role": "assistant", "content": full_answer})
     conversation_store.save_session(
         st.session_state["session_id"],
         st.session_state["message"],
