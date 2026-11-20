@@ -208,20 +208,19 @@ if prompt:
             user_id=PROFILE_USER_ID,
         )
 
-        def capture(generator, cache_list):
-            for chunk in generator:
-                cache_list.append(chunk)
-                for char in chunk:
-                    time.sleep(0.001)
-                    yield char
+    def capture(generator, cache_list):
+        for chunk in generator:
+            cache_list.append(chunk)
+            yield chunk
 
-        st.chat_message("assistant").write_stream(capture(res_stream, response_messages))
-        assistant_text = response_messages[-1] if response_messages else ""
-        st.session_state["message"].append({"role": "assistant", "content": assistant_text})
-        conversation_store.save_session(
-            st.session_state["session_id"],
-            st.session_state["message"],
-        )
-        st.rerun()
+    st.chat_message("assistant").write_stream(capture(res_stream, response_messages))
 
+    # 修复：拼接全部 chunk 作为完整回答，而不是只取最后一段
+    assistant_text = "".join(response_messages)
+    st.session_state["message"].append({"role": "assistant", "content": assistant_text})
 
+    conversation_store.save_session(
+        st.session_state["session_id"],
+        st.session_state["message"],
+    )
+    st.rerun()
