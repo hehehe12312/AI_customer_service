@@ -92,7 +92,7 @@ class ChatModelFactory(BaseModelFactory):
             model=rag_conf["chat_model_name"],
             api_key=api_key,
             base_url=base_url,
-            temperature=0.3,
+            temperature=0.5,
         )
 
 
@@ -150,3 +150,9 @@ def __getattr__(name: str):
     if name == "embed_model":
         return get_embed_model()
     raise AttributeError(f"module 'model.factory' has no attribute {name!r}")
+
+if __name__ == "__main__":
+    llm = ChatModelFactory().generator()
+    for chunk in llm.stream("深圳温度多少"):
+        print(chunk.content, end="", flush=True)
+    print()

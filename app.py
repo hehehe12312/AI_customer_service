@@ -1,4 +1,3 @@
-import time
 from urllib.parse import quote
 
 import streamlit as st
@@ -191,25 +190,22 @@ if prompt:
     st.chat_message("user").write(prompt)
     st.session_state["message"].append({"role": "user", "content": prompt})
 
-    response_messages = []
+    res_stream = st.session_state["agent"].execute_stream(
+        st.session_state["message"],
+        user_id=PROFILE_USER_ID,
+    )
+
     with st.spinner("客服思考中..."):
-        res_stream = st.session_state["agent"].execute_stream(
-            st.session_state["message"],
-            user_id=PROFILE_USER_ID,
-        )
+        with st.chat_message("assistant"):
+            assistant_text = st.write_stream(res_stream)
+    if not isinstance(assistant_text, str):
+        assistant_text = ""
+    assistant_text = assistant_text.strip()
+    st.session_state["message"].append({"role": "assistant", "content": assistant_text})
+    conversation_store.save_session(
+        st.session_state["session_id"],
+        st.session_state["message"],
+    )
+    st.rerun()
 
-        def capture(generator, cache_list):
-            for chunk in generator:
-                cache_list.append(chunk)
-                for char in chunk:
-                    time.sleep(0.005)
-                    yield char
 
-        st.chat_message("assistant").write_stream(capture(res_stream, response_messages))
-        assistant_text = response_messages[-1] if response_messages else ""
-        st.session_state["message"].append({"role": "assistant", "content": assistant_text})
-        conversation_store.save_session(
-            st.session_state["session_id"],
-            st.session_state["message"],
-        )
-        st.rerun()

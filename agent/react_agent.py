@@ -38,27 +38,8 @@ class ReactAgent(object):
         )
         self.max_history = int(memory_conf.get("max_history_messages", 20))
 
-    @staticmethod
-    def _content_to_text(content) -> str:
-        if content is None:
-            return ""
-        if isinstance(content, str):
-            return content.strip()
-        if isinstance(content, list):
-            parts = []
-            for item in content:
-                if isinstance(item, str):
-                    parts.append(item)
-                elif isinstance(item, dict):
-                    parts.append(str(item.get("text") or item.get("content") or ""))
-                else:
-                    text = getattr(item, "text", None)
-                    parts.append(text if isinstance(text, str) else str(item))
-            return "".join(parts).strip()
-        return str(content).strip()
-
     def execute_stream(self, messages, user_id: str = "1001"):
-        """messages: [{"role": "user"|"assistant", "content": "..."}, ...]"""
+        """Yield 模型 token 增量。messages: [{"role": "user"|"assistant", "content": "..."}, ...]"""
         # 只把 user/assistant 文本消息交给模型，并截断过长历史
         cleaned = []
         for item in messages:
@@ -69,17 +50,19 @@ class ReactAgent(object):
         if self.max_history > 0:
             cleaned = cleaned[-self.max_history:]
 
-        input_dict = {"messages": cleaned}
-
-        for chunk in self.agent.stream(
-            input_dict,
-            stream_mode="values",
+        for token, metadata in self.agent.stream(
+            {"messages": cleaned},
+            stream_mode="messages",
             context={"report": False, "user_id": str(user_id)},
         ):
-            latest_message = chunk["messages"][-1]
-            text = self._content_to_text(latest_message.content)
+            # 工具节点里的 RAG 摘要不展示。流式片段的 type 是 AIMessageChunk，不是 ai。
+            if metadata.get("langgraph_node") == "tools":
+                continue
+            if getattr(token, "type", None) not in ("ai", "AIMessageChunk"):
+                continue
+            text = token.text
             if text:
-                yield text + "\n"
+                yield text
 
 
 if __name__ == "__main__":
