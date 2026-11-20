@@ -40,7 +40,6 @@ QWEATHER_API_HOST = "你的host.re.qweatherapi.com"''',
     st.write("已读到的 Secrets key：", ", ".join(loaded_keys) if loaded_keys else "（无）")
     st.stop()
 
-from agent.react_agent import ReactAgent
 from memory.conversation_store import ConversationStore
 
 DEFAULT_GREETING = {
@@ -51,11 +50,26 @@ PROFILE_USER_ID = "default"
 
 conversation_store = ConversationStore()
 
-# 主题/知识库变更后 bump 此版本，避免 session 里缓存旧 Agent（含失效的 Chroma collection）
-AGENT_BUILD = "outdoor-cs-v5"
-if st.session_state.get("agent_build") != AGENT_BUILD or "agent" not in st.session_state:
-    st.session_state["agent"] = ReactAgent()
-    st.session_state["agent_build"] = AGENT_BUILD
+# bump 使旧 session Agent 失效；cache_resource 跨会话复用，避免每次打开重建
+AGENT_BUILD = "outdoor-cs-v7"
+
+
+@st.cache_resource(show_spinner=False)
+def _get_cached_agent(build: str):
+    from agent.react_agent import ReactAgent
+
+    return ReactAgent()
+
+
+def get_agent():
+    """首次发消息时再加载 Agent，避免挡住欢迎语首屏。"""
+    if (
+        st.session_state.get("agent_build") != AGENT_BUILD
+        or "agent" not in st.session_state
+    ):
+        st.session_state["agent"] = _get_cached_agent(AGENT_BUILD)
+        st.session_state["agent_build"] = AGENT_BUILD
+    return st.session_state["agent"]
 
 
 def start_new_session() -> None:
@@ -81,13 +95,9 @@ def delete_session_and_switch(session_id: str) -> None:
         start_new_session()
 
 
-# 启动：有最近会话则打开最新；否则新建
+# 首次进入：始终新建会话，保证欢迎语立刻展示（侧栏仍可点「最近」切回旧会话）
 if "session_id" not in st.session_state or "message" not in st.session_state:
-    recent = conversation_store.list_sessions()
-    if recent:
-        open_session(recent[0]["session_id"])
-    else:
-        start_new_session()
+    start_new_session()
 
 st.markdown(
     f"""
@@ -193,7 +203,7 @@ if prompt:
 
     response_messages = []
     with st.spinner("客服思考中..."):
-        res_stream = st.session_state["agent"].execute_stream(
+        res_stream = get_agent().execute_stream(
             st.session_state["message"],
             user_id=PROFILE_USER_ID,
         )

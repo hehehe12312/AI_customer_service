@@ -1,10 +1,6 @@
 from langchain_core.tools import tool
 from langgraph.prebuilt.tool_node import ToolCallRequest
 
-from rag.vector_store import VectorStoreService
-from rag.rag_service import RagSummarizeService
-from memory.profile_store import ProfileStore
-from memory.vector_memory import VectorMemory
 import random, os
 import requests
 from dotenv import load_dotenv
@@ -14,12 +10,40 @@ from utils.logger_handler import logger
 
 load_dotenv()
 
-vector_store = VectorStoreService()
-vector_store.load_document()
-# 重建 rag 以加载最新 summarize 提示词（如：不附带来源）
-rag = RagSummarizeService(vector_store)
-profile_store = ProfileStore()
-vector_memory = VectorMemory()
+# 懒加载：避免首次打开网页时同步初始化 Chroma / Voyage / 知识库扫描
+_rag = None
+_profile_store = None
+_vector_memory = None
+
+
+def _get_rag():
+    global _rag
+    if _rag is None:
+        from rag.vector_store import VectorStoreService
+        from rag.rag_service import RagSummarizeService
+
+        vector_store = VectorStoreService()
+        vector_store.load_document()
+        _rag = RagSummarizeService(vector_store)
+    return _rag
+
+
+def _get_profile_store():
+    global _profile_store
+    if _profile_store is None:
+        from memory.profile_store import ProfileStore
+
+        _profile_store = ProfileStore()
+    return _profile_store
+
+
+def _get_vector_memory():
+    global _vector_memory
+    if _vector_memory is None:
+        from memory.vector_memory import VectorMemory
+
+        _vector_memory = VectorMemory()
+    return _vector_memory
 
 user_ids = ["1001", "1002", "1003", "1004", "1005", "1006", "1007", "1008", "1009", "1010",]
 month_arr = ["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06",
@@ -122,7 +146,7 @@ def _fetch_uv_index(location_id: str) -> str:
 
 @tool(description="从向量存储中检索冲锋衣/防晒衣参数、尺码表、洗护保养与售后规则等参考资料")
 def rag_summarize(query: str) -> str:
-    return rag.rag_summarize(query)
+    return _get_rag().rag_summarize(query)
 
 
 @tool(description="从和风天气获取指定城市的气温、降雨/降水与紫外线信息，以消息字符形式返回")
@@ -255,6 +279,8 @@ def save_user_memory(user_id: str, key: str, value: str) -> str:
     value = (value or "").strip()
     if not user_id or not key or not value:
         return "保存失败：user_id、key、value 均不能为空"
+    profile_store = _get_profile_store()
+    vector_memory = _get_vector_memory()
     if key == "note":
         profile_store.update(user_id, {"notes": value})
         vector_memory.add(user_id, value)
@@ -271,8 +297,8 @@ def recall_user_memory(user_id: str, query: str) -> str:
     query = (query or "").strip() or "用户偏好与基本信息"
     if not user_id:
         return "召回失败：user_id 不能为空"
-    profile_text = profile_store.summary(user_id)
-    facts = vector_memory.search(user_id, query)
+    profile_text = _get_profile_store().summary(user_id)
+    facts = _get_vector_memory().search(user_id, query)
     if facts:
         fact_text = "\n".join(f"- {item}" for item in facts)
     else:
