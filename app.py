@@ -40,6 +40,7 @@ QWEATHER_API_HOST = "你的host.re.qweatherapi.com"''',
     st.write("已读到的 Secrets key：", ", ".join(loaded_keys) if loaded_keys else "（无）")
     st.stop()
 
+from agent.react_agent import ReactAgent
 from memory.conversation_store import ConversationStore
 
 DEFAULT_GREETING = {
@@ -50,25 +51,11 @@ PROFILE_USER_ID = "default"
 
 conversation_store = ConversationStore()
 
-# bump 使旧 session Agent 失效；cache_resource 跨会话复用，避免每次打开重建
-AGENT_BUILD = "outdoor-cs-v7"
-
-
-@st.cache_resource(show_spinner=False)
-def _get_cached_agent(build: str):
-    from agent.react_agent import ReactAgent
-    return ReactAgent()
-
-
-def get_agent():
-    """首次发消息时再加载 Agent，避免挡住欢迎语首屏。"""
-    if (
-        st.session_state.get("agent_build") != AGENT_BUILD
-        or "agent" not in st.session_state
-    ):
-        st.session_state["agent"] = _get_cached_agent(AGENT_BUILD)
-        st.session_state["agent_build"] = AGENT_BUILD
-    return st.session_state["agent"]
+# 主题/知识库变更后 bump 此版本，避免 session 里缓存旧 Agent（含失效的 Chroma collection）
+AGENT_BUILD = "outdoor-cs-v5"
+if st.session_state.get("agent_build") != AGENT_BUILD or "agent" not in st.session_state:
+    st.session_state["agent"] = ReactAgent()
+    st.session_state["agent_build"] = AGENT_BUILD
 
 
 def start_new_session() -> None:
@@ -94,9 +81,13 @@ def delete_session_and_switch(session_id: str) -> None:
         start_new_session()
 
 
-# 首次进入：始终新建会话，保证欢迎语立刻展示（侧栏仍可点「最近」切回旧会话）
+# 启动：有最近会话则打开最新；否则新建
 if "session_id" not in st.session_state or "message" not in st.session_state:
-    start_new_session()
+    recent = conversation_store.list_sessions()
+    if recent:
+        open_session(recent[0]["session_id"])
+    else:
+        start_new_session()
 
 st.markdown(
     f"""
@@ -191,7 +182,6 @@ with st.sidebar:
                     delete_session_and_switch(sid)
                     st.rerun()
 
-# 渲染历史消息
 for message in st.session_state["message"]:
     st.chat_message(message["role"]).write(message["content"])
 
@@ -201,26 +191,25 @@ if prompt:
     st.chat_message("user").write(prompt)
     st.session_state["message"].append({"role": "user", "content": prompt})
 
-    # 生成AI气泡 + 空容器用来实时刷新
-    ai_msg = st.chat_message("assistant")
-    content_box = ai_msg.empty()
-    full_answer = ""
-
+    response_messages = []
     with st.spinner("客服思考中..."):
-        stream_iter = get_agent().execute_stream(
+        res_stream = st.session_state["agent"].execute_stream(
             st.session_state["message"],
             user_id=PROFILE_USER_ID,
         )
 
-    # 手动循环每一块chunk，【全部收完才往下走】，不会中途被rerun打断
-    for chunk in stream_iter:
-        full_answer += chunk
-        content_box.markdown(full_answer)
+        def capture(generator, cache_list):
+            for chunk in generator:
+                cache_list.append(chunk)
+                for char in chunk:
+                    time.sleep(0.005)
+                    yield char
 
-    # 流100%消费完毕之后，再保存、再rerun
-    st.session_state["message"].append({"role": "assistant", "content": full_answer})
-    conversation_store.save_session(
-        st.session_state["session_id"],
-        st.session_state["message"],
-    )
-    st.rerun()
+        st.chat_message("assistant").write_stream(capture(res_stream, response_messages))
+        assistant_text = response_messages[-1] if response_messages else ""
+        st.session_state["message"].append({"role": "assistant", "content": assistant_text})
+        conversation_store.save_session(
+            st.session_state["session_id"],
+            st.session_state["message"],
+        )
+        st.rerun()
