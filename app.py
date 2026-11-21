@@ -1,19 +1,6 @@
-from urllib.parse import quote
-
 import streamlit as st
 from dotenv import load_dotenv
-
 from utils.secrets_loader import apply_streamlit_secrets, missing_required_secrets
-
-# 红色线性垃圾桶图标（贴近参考图：圆角描边、无填充）
-_DELETE_ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
-  <path d="M9 3.75h6" stroke="#EF4444" stroke-width="1.75" stroke-linecap="round"/>
-  <path d="M4.5 6.5h15" stroke="#EF4444" stroke-width="1.75" stroke-linecap="round"/>
-  <path d="M6.4 6.5V18a2.2 2.2 0 0 0 2.2 2.2h6.8A2.2 2.2 0 0 0 17.6 18V6.5"
-        stroke="#EF4444" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M10 10.2v6.2M14 10.2v6.2" stroke="#EF4444" stroke-width="1.75" stroke-linecap="round"/>
-</svg>"""
-_DELETE_ICON_URI = "data:image/svg+xml;charset=utf-8," + quote(_DELETE_ICON_SVG)
 
 load_dotenv()
 loaded_keys = apply_streamlit_secrets()
@@ -142,7 +129,6 @@ st.markdown(
         display: block;
         width: 1.15rem;
         height: 1.15rem;
-        background: url("{_DELETE_ICON_URI}") center / contain no-repeat;
     }}
     </style>
     """,
@@ -150,11 +136,12 @@ st.markdown(
 )
 
 with st.sidebar:
-    if st.button("新对话", use_container_width=True, key="new_chat_btn"):
+    st.subheader("**控制面板**")
+    if st.button("新建会话", use_container_width=True, key="new_chat_btn",icon="💬"):
         start_new_session()
         st.rerun()
 
-    st.markdown("**最近**")
+    st.markdown("**最近信息**")
     recent_sessions = conversation_store.list_sessions()
     if not recent_sessions:
         st.caption("暂无聊天记录")
@@ -172,7 +159,8 @@ with st.sidebar:
                         st.rerun()
             with col_del:
                 if st.button(
-                    "删除",
+                    "",
+                    icon="🗑️",
                     key=f"del_{sid}",
                     use_container_width=True,
                     help="删除该会话",
