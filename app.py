@@ -75,65 +75,6 @@ if "session_id" not in st.session_state or "message" not in st.session_state:
     else:
         start_new_session()
 
-st.markdown(
-    f"""
-    <style>
-    /* 侧栏会话行：标题与删除按钮垂直居中对齐 */
-    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] {{
-        align-items: center !important;
-        gap: 0.15rem !important;
-    }}
-    /* 删除按钮：透明底 + 红色垃圾桶图标 */
-    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
-    div[data-testid="column"]:last-child div[data-testid="stButton"] {{
-        display: flex !important;
-        justify-content: center !important;
-    }}
-    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
-    div[data-testid="column"]:last-child button {{
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-        width: 2rem !important;
-        height: 2rem !important;
-        min-height: 2rem !important;
-        border-radius: 0.45rem !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        transition: background-color 0.15s ease, transform 0.15s ease !important;
-    }}
-    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
-    div[data-testid="column"]:last-child button:hover {{
-        background: rgba(239, 68, 68, 0.12) !important;
-        transform: scale(1.06);
-    }}
-    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
-    div[data-testid="column"]:last-child button:focus {{
-        box-shadow: none !important;
-        outline: none !important;
-    }}
-    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
-    div[data-testid="column"]:last-child button p,
-    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
-    div[data-testid="column"]:last-child button span {{
-        font-size: 0 !important;
-        line-height: 0 !important;
-        color: transparent !important;
-        margin: 0 !important;
-    }}
-    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]
-    div[data-testid="column"]:last-child button::before {{
-        content: "";
-        display: block;
-        width: 1.15rem;
-        height: 1.15rem;
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
 
 with st.sidebar:
     st.subheader("**控制面板**")
@@ -141,8 +82,12 @@ with st.sidebar:
         start_new_session()
         st.rerun()
 
-    st.markdown("**最近信息**")
+    st.markdown("**最近**")
     recent_sessions = conversation_store.list_sessions()
+    current_sid = st.session_state.get("session_id")
+    # 新建会话尚无用户消息时 list_sessions 会过滤掉，侧栏仍展示当前「新对话」
+    if current_sid and all(s["session_id"] != current_sid for s in recent_sessions):
+        recent_sessions = [{"session_id": current_sid, "title": "新对话"}] + recent_sessions
     if not recent_sessions:
         st.caption("暂无聊天记录")
     else:
@@ -150,10 +95,16 @@ with st.sidebar:
             sid = item["session_id"]
             title = item["title"]
             is_current = sid == st.session_state.get("session_id")
-            label = f"› {title}" if is_current else title
+            btn_type = "secondary" if is_current else "tertiary"
             col_open, col_del = st.columns([6, 1], vertical_alignment="center")
             with col_open:
-                if st.button(label, key=f"session_{sid}", use_container_width=True):
+                if st.button(
+                    title,
+                    key=f"session_{sid}",
+                    use_container_width=True,
+                    type=btn_type,
+                    icon="💬",
+                ):
                     if not is_current:
                         open_session(sid)
                         st.rerun()
