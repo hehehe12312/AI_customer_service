@@ -1,10 +1,8 @@
 .idea/
-chroma_db/
 chroma_memory/
 data/memory/
 logs/
 __pycache__/
-md5.text
 .DS_Store
 .env
 
