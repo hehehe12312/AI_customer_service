@@ -78,7 +78,7 @@ if "session_id" not in st.session_state or "message" not in st.session_state:
 
 with st.sidebar:
     st.subheader("**控制面板**")
-    if st.button("新建会话", use_container_width=True, key="new_chat_btn",icon="💬"):
+    if st.button("新建会话", use_container_width=True, key="new_chat_btn"):
         start_new_session()
         st.rerun()
 
