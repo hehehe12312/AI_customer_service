@@ -41,13 +41,9 @@ AGENT_BUILD = "outdoor-cs-v5"
 
 
 def get_agent():
-    """知识库和模型图只在第一次提问时加载，打开首页不等它们。"""
-    if st.session_state.get("agent_build") != AGENT_BUILD or "agent" not in st.session_state:
-        from agent.react_agent import ReactAgent
+    from agent.loader import get_agent as load_agent
 
-        st.session_state["agent"] = ReactAgent()
-        st.session_state["agent_build"] = AGENT_BUILD
-    return st.session_state["agent"]
+    return load_agent(AGENT_BUILD)
 
 
 def start_new_session() -> None:
@@ -151,5 +147,10 @@ if prompt:
         st.session_state["message"],
     )
     st.rerun()
+
+# 页面元素先登记完，脚本结束页面才会显示；知识库和模型图在这之后再加载。
+from agent.loader import start_agent_load
+
+start_agent_load(AGENT_BUILD)
 
 
