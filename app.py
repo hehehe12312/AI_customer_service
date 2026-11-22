@@ -125,7 +125,7 @@ with st.sidebar:
 for message in st.session_state["message"]:
     st.chat_message(message["role"]).write(message["content"])
 
-prompt = st.chat_input(placeholder="请输入您要问的问题")
+prompt = st.chat_input(placeholder="请输入")
 
 if prompt:
     st.chat_message("user").write(prompt)
