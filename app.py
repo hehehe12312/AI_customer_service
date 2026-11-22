@@ -26,7 +26,6 @@ QWEATHER_API_HOST = "你的host.re.qweatherapi.com"''',
     st.write("已读到的 Secrets key：", ", ".join(loaded_keys) if loaded_keys else "（无）")
     st.stop()
 
-from agent.react_agent import ReactAgent
 from memory.conversation_store import ConversationStore
 
 DEFAULT_GREETING = {
@@ -39,9 +38,16 @@ conversation_store = ConversationStore()
 
 # 主题/知识库变更后 bump 此版本，避免 session 里缓存旧 Agent（含失效的 Chroma collection）
 AGENT_BUILD = "outdoor-cs-v5"
-if st.session_state.get("agent_build") != AGENT_BUILD or "agent" not in st.session_state:
-    st.session_state["agent"] = ReactAgent()
-    st.session_state["agent_build"] = AGENT_BUILD
+
+
+def get_agent():
+    """知识库和模型图只在第一次提问时加载，打开首页不等它们。"""
+    if st.session_state.get("agent_build") != AGENT_BUILD or "agent" not in st.session_state:
+        from agent.react_agent import ReactAgent
+
+        st.session_state["agent"] = ReactAgent()
+        st.session_state["agent_build"] = AGENT_BUILD
+    return st.session_state["agent"]
 
 
 def start_new_session() -> None:
@@ -129,12 +135,11 @@ if prompt:
     st.chat_message("user").write(prompt)
     st.session_state["message"].append({"role": "user", "content": prompt})
 
-    res_stream = st.session_state["agent"].execute_stream(
-        st.session_state["message"],
-        user_id=PROFILE_USER_ID,
-    )
-
     with st.spinner("客服思考中..."):
+        res_stream = get_agent().execute_stream(
+            st.session_state["message"],
+            user_id=PROFILE_USER_ID,
+        )
         with st.chat_message("assistant"):
             assistant_text = st.write_stream(res_stream)
     if not isinstance(assistant_text, str):
