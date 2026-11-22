@@ -6,6 +6,19 @@ load_dotenv()
 loaded_keys = apply_streamlit_secrets()
 missing = missing_required_secrets()
 
+# 脚本还在跑时，Streamlit 会把旧元素透明度降到 0.33。这里保持原亮度。
+st.markdown(
+    """
+    <style>
+    [data-stale="true"] {
+        opacity: 1 !important;
+        transition: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("户外运动店铺智能客服")
 st.divider()
 
