@@ -46,6 +46,15 @@ def get_agent():
     return load_agent(AGENT_BUILD)
 
 
+def _awaiting_reply(messages: list) -> bool:
+    """最后一条有效消息是用户说的，说明回复还没写上。"""
+    for item in reversed(messages):
+        content = item.get("content")
+        if isinstance(content, str) and content.strip():
+            return item.get("role") == "user"
+    return False
+
+
 def start_new_session() -> None:
     created = conversation_store.create_session(DEFAULT_GREETING.copy())
     st.session_state["session_id"] = created["session_id"]
@@ -130,7 +139,13 @@ prompt = st.chat_input(placeholder="请输入")
 if prompt:
     st.chat_message("user").write(prompt)
     st.session_state["message"].append({"role": "user", "content": prompt})
+    # 先落盘。页面刚打开就发送时，这一轮可能被打断，下一轮仍能接着回复。
+    conversation_store.save_session(
+        st.session_state["session_id"],
+        st.session_state["message"],
+    )
 
+if _awaiting_reply(st.session_state["message"]):
     with st.spinner("客服思考中..."):
         res_stream = get_agent().execute_stream(
             st.session_state["message"],
@@ -141,6 +156,8 @@ if prompt:
     if not isinstance(assistant_text, str):
         assistant_text = ""
     assistant_text = assistant_text.strip()
+    if not assistant_text:
+        assistant_text = "抱歉，这次没有生成出回复，请再发一次。"
     st.session_state["message"].append({"role": "assistant", "content": assistant_text})
     conversation_store.save_session(
         st.session_state["session_id"],
