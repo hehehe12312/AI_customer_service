@@ -66,6 +66,13 @@ class ReactAgent(object):
 
 
 if __name__ == "__main__":
+    from model.factory import get_chat_model, get_embed_model
+    from agent.tools.agent_tools import init_knowledge, sync_documents
+
+    get_chat_model()
+    get_embed_model()
+    init_knowledge()
+    sync_documents()
     agent = ReactAgent()
     demo_messages = [
         {"role": "user", "content": "上海，身高170体重65，推荐一件。"},

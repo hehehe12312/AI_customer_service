@@ -1,11 +1,8 @@
 from langchain_core.tools import tool
 from langgraph.prebuilt.tool_node import ToolCallRequest
 
-from rag.vector_store import VectorStoreService
-from rag.rag_service import RagSummarizeService
-from memory.profile_store import ProfileStore
-from memory.vector_memory import VectorMemory
 import random, os
+import threading
 import requests
 from dotenv import load_dotenv
 from utils.config_handler import agent_conf
@@ -14,12 +11,130 @@ from utils.logger_handler import logger
 
 load_dotenv()
 
-vector_store = VectorStoreService()
-vector_store.load_document()
-# 重建 rag 以加载最新 summarize 提示词（如：不附带来源）
-rag = RagSummarizeService(vector_store)
-profile_store = ProfileStore()
-vector_memory = VectorMemory()
+vector_store = None
+rag = None
+profile_store = None
+vector_memory = None
+_memory_users: set[str] = set()
+_memory_lock = threading.Lock()
+
+
+def init_knowledge() -> None:
+    """打开已有向量库索引并接上资料检索。不扫描资料文件。"""
+    global vector_store, rag
+    if rag is not None:
+        return
+    from rag.vector_store import VectorStoreService
+    from rag.rag_service import RagSummarizeService
+
+    vector_store = VectorStoreService()
+    rag = RagSummarizeService(vector_store)
+
+
+def _summarize_new_file(path: str, text: str) -> str:
+    """只概括这一份新资料。失败时抛出，由同步任务记下并继续。"""
+    from model.factory import get_chat_model
+
+    clipped = (text or "").strip()
+    if len(clipped) > 6000:
+        clipped = clipped[:6000]
+    name = os.path.basename(path)
+    result = get_chat_model().invoke(
+        "请概括下面这份店铺资料，保留尺码、参数、时效和规则，用简体中文，不要编造。\n"
+        f"文件名：{name}\n{clipped}"
+    )
+    content = getattr(result, "content", "")
+    if isinstance(content, list):
+        content = "".join(str(part) for part in content)
+    return str(content).strip()
+
+
+def _read_md5_lines() -> list[str]:
+    from utils.config_handler import chroma_conf
+
+    path = get_abs_path(chroma_conf["md5_hex_store"])
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip()]
+
+
+def _texts_for_new_files(new_md5: set[str]) -> list[tuple[str, str]]:
+    from utils.config_handler import chroma_conf
+    from utils.file_handler import (
+        csv_loader,
+        get_file_md5_hex,
+        listdir_with_allowed_type,
+        pdf_loader,
+        txt_loader,
+    )
+
+    paths = listdir_with_allowed_type(
+        get_abs_path(chroma_conf["data_path"]),
+        tuple(chroma_conf["allow_knowledge_file_type"]),
+    )
+    found = []
+    for path in paths:
+        digest = get_file_md5_hex(path)
+        if digest not in new_md5:
+            continue
+        if path.endswith("txt"):
+            docs = txt_loader(path)
+        elif path.endswith("pdf"):
+            docs = pdf_loader(path)
+        elif path.endswith("csv"):
+            docs = csv_loader(path)
+        else:
+            continue
+        text = "\n".join(doc.page_content for doc in docs if getattr(doc, "page_content", ""))
+        if text.strip():
+            found.append((path, text))
+    return found
+
+
+def sync_documents() -> None:
+    """扫描资料文件，没变的跳过，新的写入向量库，并只为新文件补摘要。不挡住对话。"""
+    if vector_store is None:
+        return
+    before = set(_read_md5_lines())
+    logger.info("开始同步资料文件")
+    vector_store.load_document()
+    new_md5 = {line for line in _read_md5_lines() if line not in before}
+    added = _texts_for_new_files(new_md5) if new_md5 else []
+    for path, text in added:
+        try:
+            summary = _summarize_new_file(path, text)
+        except Exception as exc:
+            logger.error(f"资料摘要失败 {path}: {exc}")
+            continue
+        if not summary:
+            logger.warning(f"资料摘要为空，跳过 {path}")
+            continue
+        from langchain_core.documents import Document
+
+        vector_store.vector_store.add_documents(
+            [Document(page_content=summary, metadata={"source": path, "kind": "摘要"})]
+        )
+        logger.info(f"已写入资料摘要: {path}")
+    logger.info("资料文件同步结束")
+
+
+def ensure_user_memory(user_id: str) -> None:
+    """这个用户第一次说话时再打开画像和用户记忆。"""
+    global profile_store, vector_memory
+    user_id = str(user_id or "").strip() or "default"
+    with _memory_lock:
+        if user_id in _memory_users:
+            return
+        if profile_store is None:
+            from memory.profile_store import ProfileStore
+
+            profile_store = ProfileStore()
+        if vector_memory is None:
+            from memory.vector_memory import VectorMemory
+
+            vector_memory = VectorMemory()
+        _memory_users.add(user_id)
 
 user_ids = ["1001", "1002", "1003", "1004", "1005", "1006", "1007", "1008", "1009", "1010",]
 month_arr = ["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06",
